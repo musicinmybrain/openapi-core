@@ -142,34 +142,13 @@ class ObjectUnmarshaller(PrimitiveUnmarshaller):
 
 class MultiTypeUnmarshaller(PrimitiveUnmarshaller):
     def __call__(self, value: Any) -> Any:
-        unmarshaller = self._get_best_unmarshaller(value)
+        primitive_type = self.schema_validator.get_primitive_type(value)
+        unmarshaller = self.schema_unmarshaller.get_type_unmarshaller(primitive_type)
         return unmarshaller(value)
-
-    @property
-    def type(self) -> List[str]:
-        types = self.schema.getkey("type", ["any"])
-        assert isinstance(types, list)
-        return types
-
-    def _get_best_unmarshaller(self, value: Any) -> "PrimitiveUnmarshaller":
-        for schema_type in self.type:
-            result = self.schema_validator.type_validator(
-                value, type_override=schema_type
-            )
-            if not result:
-                continue
-            result = self.schema_validator.format_validator(value)
-            if not result:
-                continue
-            return self.schema_unmarshaller.get_type_unmarshaller(schema_type)
-
-        raise UnmarshallerError("Unmarshaller not found for type(s)")
 
 
 class AnyUnmarshaller(MultiTypeUnmarshaller):
-    @property
-    def type(self) -> List[str]:
-        return self.schema_unmarshaller.types_unmarshaller.get_types()
+    pass
 
 
 class TypesUnmarshaller:
@@ -189,7 +168,7 @@ class TypesUnmarshaller:
     def get_types(self) -> List[str]:
         return list(self.unmarshallers.keys())
 
-    def get_unmarshaller(
+    def get_unmarshaller_cls(
         self,
         schema_type: Optional[Union[Iterable[str], str]],
     ) -> Type["PrimitiveUnmarshaller"]:
@@ -228,8 +207,8 @@ class FormatsUnmarshaller:
             return value
         try:
             return format_unmarshaller(value)
-        except (ValueError, TypeError) as exc:
-            raise FormatUnmarshalError(value, schema_format, exc)
+        except (AttributeError, ValueError, TypeError) as exc:
+            return value
 
     def get_unmarshaller(
         self, schema_format: str
@@ -288,21 +267,32 @@ class SchemaUnmarshaller:
         schema_type = self.schema.getkey("type")
         type_unmarshaller = self.get_type_unmarshaller(schema_type)
         typed = type_unmarshaller(value)
+
         schema_format = self.find_format(value)
-        if schema_format is None:
+        format_unmarshaller = self.get_format_unmarshaller(schema_format)
+        if format_unmarshaller is None:
             return typed
-        return self.formats_unmarshaller.unmarshal(schema_format, typed)
+        try:
+            return format_unmarshaller(typed)
+        except (AttributeError, ValueError, TypeError):
+            return typed
 
     def get_type_unmarshaller(
         self,
         schema_type: Optional[Union[Iterable[str], str]],
     ) -> PrimitiveUnmarshaller:
-        klass = self.types_unmarshaller.get_unmarshaller(schema_type)
+        klass = self.types_unmarshaller.get_unmarshaller_cls(schema_type)
         return klass(
             self.schema,
             self.schema_validator,
             self,
         )
+
+    def get_format_unmarshaller(
+        self,
+        schema_format: str,
+    ) -> Optional[FormatUnmarshaller]:
+        return self.formats_unmarshaller.get_unmarshaller(schema_format)
 
     def evolve(self, schema: Spec) -> "SchemaUnmarshaller":
         cls = self.__class__
@@ -315,8 +305,11 @@ class SchemaUnmarshaller:
         )
 
     def find_format(self, value: Any) -> Optional[str]:
-        for schema in self.iter_valid_schemas(value):
-            if "format" in schema:
+        primitive_type = self.schema_validator.get_primitive_type(value)
+        if primitive_type != "string":
+            return None
+        for schema in self.schema_validator.iter_valid_schemas(value):
+            if "format" in schema and schema.getkey("type") == primitive_type:
                 return str(schema.getkey("format"))
         return None
 

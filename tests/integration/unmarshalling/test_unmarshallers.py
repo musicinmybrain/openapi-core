@@ -265,6 +265,30 @@ class BaseTestOASSchemaUnmarshallersFactoryCall:
     @pytest.mark.parametrize(
         "type,format,value",
         [
+            ("string", "float", "test"),
+            ("string", "double", "test"),
+            ("number", "date", 3),
+            ("number", "date-time", 3),
+            ("number", "uuid", 3),
+        ],
+    )
+    def test_basic_type_formats_ignored(
+        self, unmarshallers_factory, type, format, value
+    ):
+        schema = {
+            "type": type,
+            "format": format,
+        }
+        spec = Spec.from_dict(schema, validator=None)
+        unmarshaller = unmarshallers_factory.create(spec)
+
+        result = unmarshaller.unmarshal(value)
+
+        assert result == value
+
+    @pytest.mark.parametrize(
+        "type,format,value",
+        [
             ("number", "float", 3),
             ("number", "double", 3),
             ("string", "date", "test"),
@@ -2059,6 +2083,25 @@ class TestOAS31SchemaUnmarshallersFactory(
             unmarshaller.unmarshal(value)
         assert len(exc_info.value.schema_errors) == 1
         assert "is not of type" in exc_info.value.schema_errors[0].message
+
+    @pytest.mark.parametrize(
+        "types,format,value,expected",
+        [
+            (["string", "null"], "date", None, None),
+            (["string", "null"], "date", "2018-12-13", date(2018, 12, 13)),
+        ],
+    )
+    def test_multiple_types_format_valid_or_ignored(self, unmarshallers_factory, types, format, value, expected):
+        schema = {
+            "type": types,
+            "format": format,
+        }
+        spec = Spec.from_dict(schema, validator=None)
+        unmarshaller = unmarshallers_factory.create(spec)
+
+        result = unmarshaller.unmarshal(value)
+
+        assert result == expected
 
     def test_any_null(self, unmarshallers_factory):
         schema = {}

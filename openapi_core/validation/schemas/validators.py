@@ -83,6 +83,24 @@ class SchemaValidator:
 
         return lambda x: True
 
+    def get_primitive_type(self, value: Any) -> str:
+        schema_types = self.schema.getkey("type")
+        if isinstance(schema_types, str):
+            return schema_types
+        if schema_types is None:
+            schema_types = sorted(self.validator.TYPE_CHECKER._type_checkers)
+        assert isinstance(schema_types, list)
+        for schema_type in schema_types:
+            result = self.type_validator(
+                value, type_override=schema_type
+            )
+            if not result:
+                continue
+            result = self.format_validator(value)
+            if not result:
+                continue
+            return schema_type
+
     def get_one_of_schema(
         self,
         value: Any,
@@ -138,3 +156,13 @@ class SchemaValidator:
                 log.warning("invalid allOf schema found")
             else:
                 yield subschema
+
+    def iter_valid_schemas(self, value: Any) -> Iterator[Spec]:
+        yield self.schema
+
+        one_of_schema = self.schema_validator.get_one_of_schema(value)
+        if one_of_schema is not None:
+            yield one_of_schema
+
+        yield from self.schema_validator.iter_any_of_schemas(value)
+        yield from self.schema_validator.iter_all_of_schemas(value)
