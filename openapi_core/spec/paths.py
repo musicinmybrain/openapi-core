@@ -1,6 +1,4 @@
-import warnings
 from typing import Any
-from typing import Dict
 from typing import Hashable
 from typing import Mapping
 from typing import Optional
@@ -18,30 +16,6 @@ SPEC_SEPARATOR = "#"
 
 
 class Spec(JsonschemaSpec):
-    @classmethod
-    def create(
-        cls: Type[TSpec],
-        data: Mapping[Hashable, Any],
-        *args: Any,
-        url: str = "",
-        ref_resolver_handlers: Dict[str, Any] = default_handlers,
-        separator: str = SPEC_SEPARATOR,
-        validator: Optional[SupportsValidation] = openapi_spec_validator_proxy,
-    ) -> TSpec:
-        warnings.warn(
-            "Spec.create method is deprecated. Use Spec.from_dict instead.",
-            DeprecationWarning,
-        )
-
-        return cls.from_dict(
-            data,
-            *args,
-            spec_url=url,
-            ref_resolver_handlers=ref_resolver_handlers,
-            separator=separator,
-            validator=validator,
-        )
-
     @classmethod
     def from_dict(
         cls: Type[TSpec],
